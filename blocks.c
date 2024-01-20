@@ -6,8 +6,8 @@
 #define WINDOW_HEIGHT 800
 #define PLAYER_WIDTH 70.0
 #define PLAYER_HEIGHT 10.0
-#define BRICK_WIDTH 10
-#define BRICK_HEIGHT 5
+#define BRICK_WIDTH 80
+#define BRICK_HEIGHT 20
 
 
 typedef struct {
@@ -26,25 +26,27 @@ typedef struct {
 
 typedef struct {
     Vector2 pos;
-    Vector2 size;
+    bool is_visible;
 } Brick;
 
 Brick matrix[10][10];
 
 void init_game(Player *player, Ball *ball) {
-    float x = 0;
+    float x = 0; 
     float y = 0;
 
     for (int i = 0; i < 10; i++) {
+        Brick brick = { 0 };
         for (int j = 0; j < 10; j++) {
-            Brick brick = { 0 };
             brick.pos.x = x;
             brick.pos.y = y;
+            brick.is_visible = true;
             matrix[i][j] = brick;
 
-            x += BRICK_WIDTH;
+            x += BRICK_WIDTH + 1; 
         }
-        y += BRICK_HEIGHT;
+        y += BRICK_HEIGHT + 1; 
+        x = 0;
     }
 
     player->pos.x = WINDOW_WIDTH / 2;
@@ -76,7 +78,9 @@ void update_game(Player player, Ball ball) {
     if (!player.is_game_over) {
         for (int i = 0; i < 10; i++) {
             for (int j = 0; j < 10; j++) {
-                DrawRectangle(matrix[i][j].pos.x, matrix[i][j].pos.y, BRICK_WIDTH, BRICK_HEIGHT, BLACK);
+                if (matrix[i][j].is_visible) {
+                    DrawRectangle(matrix[i][j].pos.x, matrix[i][j].pos.y, BRICK_WIDTH, BRICK_HEIGHT, BLACK);
+                }
             }
         }
         DrawRectangle(player.pos.x, player.pos.y, PLAYER_WIDTH, PLAYER_HEIGHT, BLACK);
@@ -104,6 +108,21 @@ void detect_collisions(Ball *ball, Player *player) {
     if (CheckCollisionCircleRec(ball->pos, ball->radius, rec)) {
         ball->speed.y *= -1;
         ball->speed.x = (ball->pos.x - player->pos.x)/(PLAYER_WIDTH / 2)*5;
+    }
+
+    bool hasCollidedWithBrick = false;
+
+    for (int i = 0; i < 10; i++) {
+        for (int j = 0; j < 10; j++) {
+            Rectangle brick = {matrix[i][j].pos.x, matrix[i][j].pos.y, BRICK_WIDTH, BRICK_HEIGHT};
+            if (CheckCollisionCircleRec(ball->pos, ball->radius, brick) && matrix[i][j].is_visible) {
+                matrix[i][j].is_visible = false;
+                if (!hasCollidedWithBrick) {
+                    ball->speed.y *= -1;
+                    hasCollidedWithBrick = true;
+                }
+            }
+        }
     }
 }
 
