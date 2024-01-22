@@ -3,38 +3,7 @@
 #include <time.h>
 #include <stdlib.h>
 #include <stdio.h>
-
-
-#define WINDOW_WIDTH 800
-#define WINDOW_HEIGHT 800
-#define PLAYER_WIDTH 70.0
-#define PLAYER_HEIGHT 10.0
-#define BRICK_WIDTH 80
-#define BRICK_HEIGHT 20
-#define VOLUME 150.0
-#define COLORS 7
-#define INIT_NUM_BALLS 1
-
-typedef struct {
-    Vector2 pos;
-    bool is_game_over;
-    int lives;
-} Player;
-
-
-typedef struct {
-    Vector2 pos;
-    float radius;
-    bool active;
-    Vector2 speed;
-} Ball;
-
-
-typedef struct {
-    Vector2 pos;
-    bool is_visible;
-    Color color;
-} Brick;
+#include "blocks.h"
 
 Brick matrix[10][10];
 
@@ -85,10 +54,23 @@ void start_game(Sound start_sound) {
         DrawText(text, WINDOW_WIDTH / 2 - textWidth / 2, WINDOW_HEIGHT / 2 - textHeight / 2, 200, WHITE);
 
         EndDrawing();
-        WaitTime(1); 
+        WaitTime(1);
     }
 }
 
+
+void add_balls(Ball **balls, int number) {
+    *balls = realloc(*balls, (num_balls + number) * sizeof(Ball));
+    if (*balls == NULL) {
+        exit(1);
+    }
+
+    for (int i = num_balls; i < num_balls + number; i++) {
+        (*balls)[i] = (*balls)[0];
+    }
+
+    num_balls += number;
+}
 
 void initialize_balls(Player player) {
     num_balls = INIT_NUM_BALLS;
@@ -112,15 +94,22 @@ void init_game(Player *player, Sound start_sound, bool full_restart) {
     if (full_restart) {
         for (int i = 0; i < 10; i++) {
             Brick brick = { 0 };
+            int random_bonus = GetRandomValue(0, 9);
             for (int j = 0; j < 10; j++) {
                 brick.pos.x = x;
                 brick.pos.y = y;
+
+                if (j == random_bonus) {
+                    brick.bonus = true;
+                } else {
+                    brick.bonus = false;
+                }
+
                 brick.is_visible = true;
                 int random_index = GetRandomValue(0, COLORS - 1);
                 brick.color = rainbow_colors[random_index];
                 
                 matrix[i][j] = brick;
-
                 x += BRICK_WIDTH + 1; 
             }
             y += BRICK_HEIGHT + 1; 
@@ -164,8 +153,42 @@ void move_left(Player *player, Ball *balls) {
     }
 }
 
+
+int count_points() {
+    int total_points = 0;
+    for (int i = 0; i < 10; i++) {
+        for (int j = 0; j < 10; j++) {
+            if (!matrix[i][j].is_visible) {
+                total_points++;
+            }
+        }
+    }
+
+    return total_points;
+}
+
+void show_lose_screen(int total_points, Texture2D loser) {
+    int stripe_height = WINDOW_HEIGHT / COLORS;
+
+    for (int i = 0; i < COLORS; i++) {
+        DrawRectangle(0, i * stripe_height, WINDOW_WIDTH, stripe_height, rainbow_colors[i]);
+    }
+    DrawTexture(loser, WINDOW_WIDTH / 2 - loser.width / 2, WINDOW_HEIGHT / 2 - loser.height / 2, WHITE);
+    char points_str[12];
+    sprintf(points_str, "Points: %d", total_points);
+    DrawText(points_str, WINDOW_WIDTH / 2 - MeasureText(points_str, 40) / 2, WINDOW_HEIGHT / 2 + loser.height / 2 + 10, 40, BLACK);
+}
+
+
 void update_game(Player player, Ball *balls, Texture2D heart, Texture2D loser, Sound win_sound, Music background_music) {
-    if (!player.is_game_over && player.lives > 0) {
+    int total_points = count_points();
+
+    if (total_points == 100) {
+        player.is_game_over = true;
+        StopMusicStream(background_music);
+        PlaySound(win_sound);
+        DrawText("You Won!", WINDOW_WIDTH / 2 - MeasureText("You Won! Officially gei now...", 60) / 2, WINDOW_HEIGHT / 2 - 20 / 2, 20, BLACK);
+    } else if (!player.is_game_over && player.lives > 0) {
         for (int i = 0; i < 10; i++) {
             for (int j = 0; j < 10; j++) {
                 if (matrix[i][j].is_visible) {
@@ -188,35 +211,9 @@ void update_game(Player player, Ball *balls, Texture2D heart, Texture2D loser, S
             DrawTexture(heart, tex_x, tex_y, (Color){200, 200, 200, 255});
             tex_x += heart.width;
         }
-    } else {
-        int total_points = 0;
-        for (int i = 0; i < 10; i++) {
-            for (int j = 0; j < 10; j++) {
-                if (!matrix[i][j].is_visible) {
-                    total_points++;
-                }
-            }
-        }
-
-        if (total_points == 100) {
-            player.is_game_over = true;
-            StopMusicStream(background_music);
-            PlaySound(win_sound);
-            DrawText("You Won!", WINDOW_WIDTH / 2 - MeasureText("You Won! Officially gei now...", 60) / 2, WINDOW_HEIGHT / 2 - 20 / 2, 20, BLACK);
-            return;
-        }
-
-        int stripe_height = WINDOW_HEIGHT / COLORS;
-
-        for (int i = 0; i < COLORS; i++) {
-            DrawRectangle(0, i * stripe_height, WINDOW_WIDTH, stripe_height, rainbow_colors[i]);
-        }
-
-        DrawTexture(loser, WINDOW_WIDTH / 2 - loser.width / 2, WINDOW_HEIGHT / 2 - loser.height / 2, WHITE);
-        char points_str[12];
-        sprintf(points_str, "Points: %d", total_points);
-        DrawText(points_str, WINDOW_WIDTH / 2 - MeasureText(points_str, 40) / 2, WINDOW_HEIGHT / 2 + loser.height / 2 + 10, 40, BLACK);
-    }
+    } else if (player.is_game_over && player.lives <= 0) {
+        show_lose_screen(total_points, loser);
+    } 
 }
 
 
@@ -234,6 +231,7 @@ void detect_collisions(Ball *balls, Player *player, Sound deep, Music background
             } else {
                 StopMusicStream(background_music);
                 PlaySound(deep);
+                player->is_game_over = true;
             }
         }
 
